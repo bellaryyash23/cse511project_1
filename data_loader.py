@@ -32,47 +32,67 @@ class DataLoader:
         """
         Load the parquet file and transform it into a csv file
         Then load the csv file into neo4j
-
-        Args:
-            file_path (str): Path to the parquet file to be loaded
         """
-
-        # Read the parquet file
-        trips = pq.read_table(file_path)
-        trips = trips.to_pandas()
-
-        # Some data cleaning and filtering
-        trips = trips[['tpep_pickup_datetime', 'tpep_dropoff_datetime', 'PULocationID', 'DOLocationID', 'trip_distance', 'fare_amount']]
-
-        # Filter out trips that are not in bronx
-        bronx = [3, 18, 20, 31, 32, 46, 47, 51, 58, 59, 60, 69, 78, 81, 94, 119, 126, 136, 147, 159, 167, 168, 169, 174, 182, 183, 184, 185, 199, 200, 208, 212, 213, 220, 235, 240, 241, 242, 247, 248, 250, 254, 259]
-        trips = trips[trips.iloc[:, 2].isin(bronx) & trips.iloc[:, 3].isin(bronx)]
-        trips = trips[trips['trip_distance'] > 0.1]
-        trips = trips[trips['fare_amount'] > 2.5]
-
-        # Convert date-time columns to supported format
-        trips['tpep_pickup_datetime'] = pd.to_datetime(trips['tpep_pickup_datetime'], format='%Y-%m-%d %H:%M:%S')
-        trips['tpep_dropoff_datetime'] = pd.to_datetime(trips['tpep_dropoff_datetime'], format='%Y-%m-%d %H:%M:%S')
+        try:
+            # 1. Set up import directory - more robust path handling
+            import_dir = "/var/lib/neo4j/import"
+            os.makedirs(import_dir, exist_ok=True, mode=0o777)
         
-        # Convert to csv and store in the current directory
-        save_loc = "/var/lib/neo4j/import/" + file_path.split(".")[0] + '.csv'
-        trips.to_csv(save_loc, index=False)
+            # 2. Read and filter data
+            trips = pq.read_table(file_path).to_pandas()
+        
+            # Required columns
+            trips = trips[['tpep_pickup_datetime', 'tpep_dropoff_datetime', 'PULocationID', 'DOLocationID', 'trip_distance', 'fare_amount']]
+        
+            # Bronx filter (temporarily add debug output)
+            bronx_locations = [3, 18, 20, 31, 32, 46, 47, 51, 58, 59, 60, 69, 78, 81, 94, 119, 126, 136, 147, 159, 167, 168, 169, 174, 182, 183, 184, 185, 199, 200, 208, 212, 213, 220, 235, 240, 241, 242, 247, 248, 250, 254, 259]
+        
+            print(f"Total trips before filtering: {len(trips)}")
+            trips = trips[
+                trips['PULocationID'].isin(bronx_locations) & 
+                trips['DOLocationID'].isin(bronx_locations) &
+                (trips['trip_distance'] > 0.1) &
+                (trips['fare_amount'] > 2.5)
+            ]
+            print(f"Total trips after filtering: {len(trips)}")
+        
+            if trips.empty:
+                raise ValueError("No trips remaining after filtering - check your filters")
 
-        # TODO: Your code here
-        with self.driver.session() as session:
-            # Create Location nodes and TRIP relationships
-            query = """
-            LOAD CSV WITH HEADERS FROM $csv_path AS row
-            MERGE (pickup:Location {name: toInteger(row.PULocationID)})
-            MERGE (dropoff:Location {name: toInteger(row.DOLocationID)})
-            CREATE (pickup)-[:TRIP {
-                distance: toFloat(row.trip_distance),
-                fare: toFloat(row.fare_amount),
-                pickup_dt: datetime(row.tpep_pickup_datetime),
-                dropoff_dt: datetime(row.tpep_dropoff_datetime)
-            }]->(dropoff)
-            """
-            session.run(query, csv_path=f"file:///{os.path.basename(save_loc)}")
+            # 3. Convert datetime
+            trips['tpep_pickup_datetime'] = pd.to_datetime(trips['tpep_pickup_datetime'])
+            trips['tpep_dropoff_datetime'] = pd.to_datetime(trips['tpep_dropoff_datetime'])
+        
+            # 4. Save CSV with fixed filename
+            csv_filename = "trips.csv"
+            save_loc = os.path.join(import_dir, csv_filename)
+            trips.to_csv(save_loc, index=False)
+        
+            # Verify file was created
+            if not os.path.exists(save_loc):
+                raise FileNotFoundError(f"Failed to create CSV at {save_loc}")
+            print(f"CSV created successfully: {save_loc} ({os.path.getsize(save_loc)} bytes)")
+
+            # 5. Load into Neo4j with absolute file path
+            with self.driver.session() as session:
+                query = """
+                LOAD CSV WITH HEADERS FROM $csv_path AS row
+                MERGE (pickup:Location {name: toInteger(row.PULocationID)})
+                MERGE (dropoff:Location {name: toInteger(row.DOLocationID)})
+                CREATE (pickup)-[:TRIP {
+                    distance: toFloat(row.trip_distance),
+                    fare: toFloat(row.fare_amount),
+                    pickup_dt: datetime(row.tpep_pickup_datetime),
+                    dropoff_dt: datetime(row.tpep_dropoff_datetime)
+                }]->(dropoff)
+                """
+                # Use absolute file path in URI format
+                session.run(query, csv_path=f"file://{save_loc}")
+                print("Data loaded into Neo4j successfully!")
+
+        except Exception as e:
+            print(f"Error in load_transform_file: {str(e)}")
+            raise
 
 
 def main():
