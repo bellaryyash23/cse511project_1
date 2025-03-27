@@ -30,8 +30,8 @@ class DataLoader:
         ]
 
         # Convert datetime
-        trips['tpep_pickup_datetime'] = pd.to_datetime(trips['tpep_pickup_datetime'])
-        trips['tpep_dropoff_datetime'] = pd.to_datetime(trips['tpep_dropoff_datetime'])
+        trips['tpep_pickup_datetime'] = pd.to_datetime(trips['tpep_pickup_datetime']).dt.strftime('%Y-%m-%dT%H:%M:%S')
+        trips['tpep_dropoff_datetime'] = pd.to_datetime(trips['tpep_dropoff_datetime']).dt.strftime('%Y-%m-%dT%H:%M:%S')
         
         # Save CSV to Neo4j's import directory
         csv_filename = "trips.csv"
