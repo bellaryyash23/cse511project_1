@@ -17,13 +17,10 @@ class DataLoader:
         trips = trips.to_pandas()
 
         # Filter columns and clean data
-        trips = trips[['tpep_pickup_datetime', 'tpep_dropoff_datetime',
-                      'PULocationID', 'DOLocationID', 'trip_distance', 'fare_amount']]
+        trips = trips[['tpep_pickup_datetime', 'tpep_dropoff_datetime', 'PULocationID', 'DOLocationID', 'trip_distance', 'fare_amount']]
 
         # Bronx location filter
-        bronx = [3, 18, 20, 31, 32, 46, 47, 51, 58, 59, 60, 69, 78, 81, 94, 119,
-                126, 136, 147, 159, 167, 168, 169, 174, 182, 183, 184, 185, 199,
-                200, 208, 212, 213, 220, 235, 240, 241, 242, 247, 248, 250, 254, 259]
+        bronx = [3, 18, 20, 31, 32, 46, 47, 51, 58, 59, 60, 69, 78, 81, 94, 119, 126, 136, 147, 159, 167, 168, 169, 174, 182, 183, 184, 185, 199, 200, 208, 212, 213, 220, 235, 240, 241, 242, 247, 248, 250, 254, 259]
         
         trips = trips[
             trips['PULocationID'].isin(bronx) & 
